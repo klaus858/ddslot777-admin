@@ -2,11 +2,26 @@
 
 DD Slot admin panel built with Vue 3, Element Plus, and Vite.
 
+Live admin domain:
+
+- https://ddslot777888.com
+
 Demo login:
 
 - Username: admin
 - Password: admin123
 
-This first version uses mock data so the admin UI can be deployed quickly. The Go API will be connected in the next step.
+Backend API:
 
-Deployment trigger: 2026-05-19.
+- Base URL: https://ddslot777-api.vercel.app
+- Health check: `GET /api/health`
+- Contract check: `GET /api/contract`
+- Contract version: `admin-v1`
+
+Data flow rules:
+
+- Admin data must come from the Go API.
+- If the API is unavailable or returns an incompatible response shape, the admin panel shows an API error instead of silent mock data.
+- Deposit confirmation calls `POST /api/admin/deposits/confirm`, then reloads the deposit list from the API so the UI and backend state stay aligned.
+
+Next production step: connect the Go API to a real database so members, balances, deposits, activities, and audit logs persist after deployment restarts.
