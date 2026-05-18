@@ -1,5 +1,6 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage } from 'element-plus'
 import {
   Coin,
   CreditCard,
@@ -14,38 +15,44 @@ import {
   Wallet
 } from '@element-plus/icons-vue'
 
+const API_BASE = 'https://ddslot777-api.vercel.app'
+
 const isAuthed = ref(localStorage.getItem('dd-admin-authed') === '1')
 const activeMenu = ref('dashboard')
 const loginForm = reactive({ username: 'admin', password: 'admin123' })
 const loginError = ref('')
+const tableLoading = ref(false)
+const apiStatus = ref('API Connected')
 
-const metrics = [
+const defaultMetrics = [
   { label: '今日充值', value: '$ 12,480.00', trend: '+18%', icon: Money },
   { label: '待处理提现', value: '7', trend: '需审核', icon: CreditCard },
   { label: '新增会员', value: '126', trend: '+9.4%', icon: User },
   { label: '活动领取', value: '384', trend: '实时', icon: Present }
 ]
 
-const members = [
+const metrics = ref([...defaultMetrics])
+
+const members = ref([
   { id: 'U10021', name: 'Player123', balance: '$ 860.50', vip: 'VIP 2', status: '正常', lastLogin: '2026-05-19 12:40' },
   { id: 'U10022', name: 'LuckyJoe', balance: '$ 2,410.00', vip: 'VIP 4', status: '正常', lastLogin: '2026-05-19 11:18' },
   { id: 'U10023', name: 'HighRoller', balance: '$ 9,800.00', vip: 'VIP 6', status: '风控观察', lastLogin: '2026-05-19 10:06' },
   { id: 'U10024', name: 'PlayWin88', balance: '$ 320.75', vip: 'VIP 1', status: '正常', lastLogin: '2026-05-19 09:54' }
-]
+])
 
-const deposits = [
+const deposits = ref([
   { order: 'D20260519001', user: 'Player123', amount: '$ 100.00', channel: 'USDT', state: '已上分', time: '12:34' },
   { order: 'D20260519002', user: 'LuckyJoe', amount: '$ 300.00', channel: 'CashApp', state: '待确认', time: '12:22' },
   { order: 'D20260519003', user: 'PlayWin88', amount: '$ 50.00', channel: 'PayPal', state: '已上分', time: '11:48' },
   { order: 'D20260519004', user: 'HighRoller', amount: '$ 1,000.00', channel: 'Bank', state: '风控复核', time: '11:05' }
-]
+])
 
-const activities = [
+const activities = ref([
   { name: '首存奖励', rule: '1st Deposit +30%', state: true },
   { name: '每日返水', rule: 'Slot Rebate 2%', state: true },
   { name: '登录奖励', rule: '$28 Free Bonus', state: true },
   { name: '好友邀请', rule: 'Refer & Earn', state: false }
-]
+])
 
 const currentTitle = computed(() => {
   const map = {
@@ -58,20 +65,120 @@ const currentTitle = computed(() => {
   return map[activeMenu.value]
 })
 
-const doLogin = () => {
-  if (loginForm.username === 'admin' && loginForm.password === 'admin123') {
-    localStorage.setItem('dd-admin-authed', '1')
-    isAuthed.value = true
-    loginError.value = ''
-    return
+const formatMoney = (value) => `$ ${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+
+const memberStatusMap = {
+  normal: '正常',
+  risk_review: '风控观察'
+}
+
+const depositStatusMap = {
+  pending: '待确认',
+  credited: '已上分',
+  risk_review: '风控复核'
+}
+
+const requestAPI = async (path, options = {}) => {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {})
   }
-  loginError.value = '账号或密码不正确'
+  const token = localStorage.getItem('dd-admin-token')
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers
+  })
+
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(data.error || 'request_failed')
+  }
+  return data
+}
+
+const loadAdminData = async () => {
+  tableLoading.value = true
+  try {
+    const [summary, memberData, depositData] = await Promise.all([
+      requestAPI('/api/admin/summary'),
+      requestAPI('/api/admin/members'),
+      requestAPI('/api/admin/deposits')
+    ])
+
+    metrics.value = [
+      { label: '今日充值', value: formatMoney(summary.todayDeposit), trend: '+18%', icon: Money },
+      { label: '待处理提现', value: String(summary.pendingWithdraws), trend: '需审核', icon: CreditCard },
+      { label: '新增会员', value: String(summary.newMembers), trend: '+9.4%', icon: User },
+      { label: '活动领取', value: String(summary.activityClaims), trend: '实时', icon: Present }
+    ]
+
+    members.value = (memberData.items || []).map((item) => ({
+      ...item,
+      status: memberStatusMap[item.status] || item.status
+    }))
+
+    deposits.value = (depositData.items || []).map((item) => ({
+      ...item,
+      state: depositStatusMap[item.state] || item.state
+    }))
+
+    apiStatus.value = 'Go API Connected'
+  } catch (error) {
+    apiStatus.value = 'Using Fallback Data'
+    ElMessage.warning('API 暂时不可用，已显示本地演示数据')
+  } finally {
+    tableLoading.value = false
+  }
+}
+
+const doLogin = async () => {
+  loginError.value = ''
+  try {
+    const data = await requestAPI('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(loginForm)
+    })
+
+    localStorage.setItem('dd-admin-authed', '1')
+    localStorage.setItem('dd-admin-token', data.token)
+    isAuthed.value = true
+    ElMessage.success('登录成功')
+    await loadAdminData()
+  } catch (error) {
+    loginError.value = '账号或密码不正确'
+  }
+}
+
+const confirmDeposit = async (row) => {
+  if (row.state !== '待确认') return
+  try {
+    await requestAPI('/api/admin/deposits/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ order: row.order })
+    })
+    row.state = '已上分'
+    ElMessage.success('已模拟上分成功')
+  } catch (error) {
+    ElMessage.error('确认失败，请稍后重试')
+  }
 }
 
 const logout = () => {
   localStorage.removeItem('dd-admin-authed')
+  localStorage.removeItem('dd-admin-token')
   isAuthed.value = false
 }
+
+onMounted(() => {
+  if (isAuthed.value) {
+    if (!localStorage.getItem('dd-admin-token')) {
+      localStorage.setItem('dd-admin-token', 'demo-admin-token')
+    }
+    loadAdminData()
+  }
+})
 </script>
 
 <template>
@@ -116,12 +223,12 @@ const logout = () => {
           <h2>{{ currentTitle }}</h2>
         </div>
         <div class="header-actions">
-          <el-tag effect="dark" type="success">Demo Server</el-tag>
+          <el-tag effect="dark" type="success">{{ apiStatus }}</el-tag>
           <el-button :icon="SwitchButton" circle @click="logout" />
         </div>
       </el-header>
 
-      <el-main class="admin-main">
+      <el-main class="admin-main" v-loading="tableLoading">
         <section v-if="activeMenu === 'dashboard'" class="dashboard-grid">
           <article v-for="item in metrics" :key="item.label" class="metric-card">
             <el-icon><component :is="item.icon" /></el-icon>
@@ -165,7 +272,9 @@ const logout = () => {
             <el-table-column prop="time" label="时间" />
             <el-table-column label="操作" width="150">
               <template #default="scope">
-                <el-button size="small" type="primary" plain>{{ scope.row.state === '待确认' ? '确认上分' : '查看' }}</el-button>
+                <el-button size="small" type="primary" plain @click="confirmDeposit(scope.row)">
+                  {{ scope.row.state === '待确认' ? '确认上分' : '查看' }}
+                </el-button>
               </template>
             </el-table-column>
           </el-table>
