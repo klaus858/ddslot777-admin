@@ -22,30 +22,19 @@ const activeMenu = ref('dashboard')
 const loginForm = reactive({ username: 'admin', password: 'admin123' })
 const loginError = ref('')
 const tableLoading = ref(false)
-const apiStatus = ref('API Connected')
+const apiStatus = ref('Checking API')
+const apiError = ref('')
 
-const defaultMetrics = [
-  { label: '今日充值', value: '$ 12,480.00', trend: '+18%', icon: Money },
-  { label: '待处理提现', value: '7', trend: '需审核', icon: CreditCard },
-  { label: '新增会员', value: '126', trend: '+9.4%', icon: User },
-  { label: '活动领取', value: '384', trend: '实时', icon: Present }
+const createEmptyMetrics = () => [
+  { label: '今日充值', value: '$ 0.00', trend: 'API实时', icon: Money },
+  { label: '待处理提现', value: '0', trend: 'API实时', icon: CreditCard },
+  { label: '新增会员', value: '0', trend: 'API实时', icon: User },
+  { label: '活动领取', value: '0', trend: 'API实时', icon: Present }
 ]
 
-const metrics = ref([...defaultMetrics])
-
-const members = ref([
-  { id: 'U10021', name: 'Player123', balance: '$ 860.50', vip: 'VIP 2', status: '正常', lastLogin: '2026-05-19 12:40' },
-  { id: 'U10022', name: 'LuckyJoe', balance: '$ 2,410.00', vip: 'VIP 4', status: '正常', lastLogin: '2026-05-19 11:18' },
-  { id: 'U10023', name: 'HighRoller', balance: '$ 9,800.00', vip: 'VIP 6', status: '风控观察', lastLogin: '2026-05-19 10:06' },
-  { id: 'U10024', name: 'PlayWin88', balance: '$ 320.75', vip: 'VIP 1', status: '正常', lastLogin: '2026-05-19 09:54' }
-])
-
-const deposits = ref([
-  { order: 'D20260519001', user: 'Player123', amount: '$ 100.00', channel: 'USDT', state: '已上分', time: '12:34' },
-  { order: 'D20260519002', user: 'LuckyJoe', amount: '$ 300.00', channel: 'CashApp', state: '待确认', time: '12:22' },
-  { order: 'D20260519003', user: 'PlayWin88', amount: '$ 50.00', channel: 'PayPal', state: '已上分', time: '11:48' },
-  { order: 'D20260519004', user: 'HighRoller', amount: '$ 1,000.00', channel: 'Bank', state: '风控复核', time: '11:05' }
-])
+const metrics = ref(createEmptyMetrics())
+const members = ref([])
+const deposits = ref([])
 
 const activities = ref([
   { name: '首存奖励', rule: '1st Deposit +30%', state: true },
@@ -65,6 +54,12 @@ const currentTitle = computed(() => {
   return map[activeMenu.value]
 })
 
+const apiStatusType = computed(() => {
+  if (apiStatus.value === 'Go API Connected') return 'success'
+  if (apiStatus.value === 'API Error') return 'danger'
+  return 'warning'
+})
+
 const formatMoney = (value) => `$ ${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
 
 const memberStatusMap = {
@@ -78,8 +73,21 @@ const depositStatusMap = {
   risk_review: '风控复核'
 }
 
+const assertArray = (value, name) => {
+  if (!Array.isArray(value)) {
+    throw new Error(`${name}_contract_error`)
+  }
+}
+
+const assertNumber = (value, name) => {
+  if (typeof value !== 'number') {
+    throw new Error(`${name}_contract_error`)
+  }
+}
+
 const requestAPI = async (path, options = {}) => {
   const headers = {
+    Accept: 'application/json',
     'Content-Type': 'application/json',
     ...(options.headers || {})
   }
@@ -100,34 +108,61 @@ const requestAPI = async (path, options = {}) => {
 
 const loadAdminData = async () => {
   tableLoading.value = true
+  apiError.value = ''
+  apiStatus.value = 'Checking API'
+
   try {
+    const health = await requestAPI('/api/health')
+    if (!health.ok || health.service !== 'ddslot777-api') {
+      throw new Error('health_contract_error')
+    }
+
     const [summary, memberData, depositData] = await Promise.all([
       requestAPI('/api/admin/summary'),
       requestAPI('/api/admin/members'),
       requestAPI('/api/admin/deposits')
     ])
 
+    assertNumber(summary.todayDeposit, 'summary.todayDeposit')
+    assertNumber(summary.pendingWithdraws, 'summary.pendingWithdraws')
+    assertNumber(summary.newMembers, 'summary.newMembers')
+    assertNumber(summary.activityClaims, 'summary.activityClaims')
+    assertArray(memberData.items, 'members.items')
+    assertArray(depositData.items, 'deposits.items')
+
     metrics.value = [
-      { label: '今日充值', value: formatMoney(summary.todayDeposit), trend: '+18%', icon: Money },
+      { label: '今日充值', value: formatMoney(summary.todayDeposit), trend: 'API实时', icon: Money },
       { label: '待处理提现', value: String(summary.pendingWithdraws), trend: '需审核', icon: CreditCard },
-      { label: '新增会员', value: String(summary.newMembers), trend: '+9.4%', icon: User },
-      { label: '活动领取', value: String(summary.activityClaims), trend: '实时', icon: Present }
+      { label: '新增会员', value: String(summary.newMembers), trend: 'API实时', icon: User },
+      { label: '活动领取', value: String(summary.activityClaims), trend: 'API实时', icon: Present }
     ]
 
-    members.value = (memberData.items || []).map((item) => ({
-      ...item,
-      status: memberStatusMap[item.status] || item.status
+    members.value = memberData.items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      balance: item.balance,
+      vip: item.vip,
+      status: memberStatusMap[item.status] || item.status,
+      lastLogin: item.lastLogin
     }))
 
-    deposits.value = (depositData.items || []).map((item) => ({
-      ...item,
-      state: depositStatusMap[item.state] || item.state
+    deposits.value = depositData.items.map((item) => ({
+      order: item.order,
+      user: item.user,
+      amount: item.amount,
+      channel: item.channel,
+      state: depositStatusMap[item.state] || item.state,
+      time: item.time
     }))
 
     apiStatus.value = 'Go API Connected'
   } catch (error) {
-    apiStatus.value = 'Using Fallback Data'
-    ElMessage.warning('API 暂时不可用，已显示本地演示数据')
+    apiStatus.value = 'API Error'
+    apiError.value = `API连接或字段结构异常：${error.message}`
+    metrics.value = createEmptyMetrics()
+    members.value = []
+    deposits.value = []
+    ElMessage.error('API连接失败，已停止显示演示假数据')
   } finally {
     tableLoading.value = false
   }
@@ -141,13 +176,15 @@ const doLogin = async () => {
       body: JSON.stringify(loginForm)
     })
 
+    if (!data.token) throw new Error('missing_token')
+
     localStorage.setItem('dd-admin-authed', '1')
     localStorage.setItem('dd-admin-token', data.token)
     isAuthed.value = true
     ElMessage.success('登录成功')
     await loadAdminData()
   } catch (error) {
-    loginError.value = '账号或密码不正确'
+    loginError.value = '账号或密码不正确，或 API 登录接口不可用'
   }
 }
 
@@ -158,10 +195,10 @@ const confirmDeposit = async (row) => {
       method: 'POST',
       body: JSON.stringify({ order: row.order })
     })
-    row.state = '已上分'
-    ElMessage.success('已模拟上分成功')
+    ElMessage.success('已同步 API 上分状态')
+    await loadAdminData()
   } catch (error) {
-    ElMessage.error('确认失败，请稍后重试')
+    ElMessage.error('确认失败，API未同步')
   }
 }
 
@@ -174,7 +211,9 @@ const logout = () => {
 onMounted(() => {
   if (isAuthed.value) {
     if (!localStorage.getItem('dd-admin-token')) {
-      localStorage.setItem('dd-admin-token', 'demo-admin-token')
+      localStorage.removeItem('dd-admin-authed')
+      isAuthed.value = false
+      return
     }
     loadAdminData()
   }
@@ -223,12 +262,15 @@ onMounted(() => {
           <h2>{{ currentTitle }}</h2>
         </div>
         <div class="header-actions">
-          <el-tag effect="dark" type="success">{{ apiStatus }}</el-tag>
+          <el-button size="small" type="primary" plain @click="loadAdminData">同步API</el-button>
+          <el-tag effect="dark" :type="apiStatusType">{{ apiStatus }}</el-tag>
           <el-button :icon="SwitchButton" circle @click="logout" />
         </div>
       </el-header>
 
       <el-main class="admin-main" v-loading="tableLoading">
+        <el-alert v-if="apiError" class="api-alert" :title="apiError" type="error" show-icon :closable="false" />
+
         <section v-if="activeMenu === 'dashboard'" class="dashboard-grid">
           <article v-for="item in metrics" :key="item.label" class="metric-card">
             <el-icon><component :is="item.icon" /></el-icon>
@@ -282,6 +324,7 @@ onMounted(() => {
 
         <section v-if="activeMenu === 'activities'" class="panel">
           <div class="panel-title"><Present /> 活动配置</div>
+          <el-alert class="api-alert" title="活动配置暂时是前端本地开关，下一步会接入 Go API 和数据库保存。" type="warning" show-icon :closable="false" />
           <div class="activity-list">
             <div v-for="activity in activities" :key="activity.name" class="activity-row">
               <div>
