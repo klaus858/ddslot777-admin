@@ -162,6 +162,10 @@ input {
   padding: 28px;
 }
 
+.api-alert {
+  margin-bottom: 18px;
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
