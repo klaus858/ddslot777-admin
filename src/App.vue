@@ -4,11 +4,11 @@ import {
   Coin,
   CreditCard,
   DataAnalysis,
-  Gift,
   House,
   Lock,
   Money,
   Operation,
+  Present,
   SwitchButton,
   User,
   Wallet
@@ -23,7 +23,7 @@ const metrics = [
   { label: '今日充值', value: '$ 12,480.00', trend: '+18%', icon: Money },
   { label: '待处理提现', value: '7', trend: '需审核', icon: CreditCard },
   { label: '新增会员', value: '126', trend: '+9.4%', icon: User },
-  { label: '活动领取', value: '384', trend: '实时', icon: Gift }
+  { label: '活动领取', value: '384', trend: '实时', icon: Present }
 ]
 
 const members = [
@@ -104,7 +104,7 @@ const logout = () => {
         <el-menu-item index="dashboard" @click="activeMenu = 'dashboard'"><el-icon><House /></el-icon>运营总览</el-menu-item>
         <el-menu-item index="members" @click="activeMenu = 'members'"><el-icon><User /></el-icon>会员管理</el-menu-item>
         <el-menu-item index="deposits" @click="activeMenu = 'deposits'"><el-icon><Wallet /></el-icon>充值审核</el-menu-item>
-        <el-menu-item index="activities" @click="activeMenu = 'activities'"><el-icon><Gift /></el-icon>活动配置</el-menu-item>
+        <el-menu-item index="activities" @click="activeMenu = 'activities'"><el-icon><Present /></el-icon>活动配置</el-menu-item>
         <el-menu-item index="risk" @click="activeMenu = 'risk'"><el-icon><Operation /></el-icon>风控记录</el-menu-item>
       </el-menu>
     </el-aside>
@@ -172,7 +172,7 @@ const logout = () => {
         </section>
 
         <section v-if="activeMenu === 'activities'" class="panel">
-          <div class="panel-title"><Gift /> 活动配置</div>
+          <div class="panel-title"><Present /> 活动配置</div>
           <div class="activity-list">
             <div v-for="activity in activities" :key="activity.name" class="activity-row">
               <div>
